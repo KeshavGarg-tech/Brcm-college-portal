@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+
+# Runtime uploads
+server/uploads/
+
+# Logs
+*.log
+.manus-logs/
+
+# Local/dev backups
+*.backup
+*.bak
+*.before-*
+northstar-before-assignment-update/
+
+# OS/editor files
+.DS_Store
+.vscode/
+.idea/
