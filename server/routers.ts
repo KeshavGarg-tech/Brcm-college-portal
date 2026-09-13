@@ -17,6 +17,7 @@ import {
   getTeachers,
   getStudentClasses,
   getTeacherClasses,
+  getTeacherStudents,
   getStudentMaterials,
   getTeacherMaterials,
   getStudentAssignments,
@@ -813,6 +814,20 @@ removeStudent: adminProcedure
       }
 
       return getTeacherClasses(ctx.user.id);
+    }),
+
+    /**
+     * Students enrolled in classes taught by the currently logged-in teacher.
+     */
+    teacherStudents: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "teacher" && ctx.user.role !== "admin") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Teacher access required",
+        });
+      }
+
+      return getTeacherStudents(ctx.user.id);
     }),
 
     /**

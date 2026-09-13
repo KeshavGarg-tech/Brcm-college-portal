@@ -14,6 +14,7 @@ import {
   Trash2,
   Loader2,
   Paperclip,
+  MessageCircle,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
@@ -33,12 +34,30 @@ export default function TeacherPortal() {
 
   const [materialSearch, setMaterialSearch] = useState("");
   const [materialClassFilter, setMaterialClassFilter] = useState("");
+  const [showTickets, setShowTickets] = useState(false);
+  const [selectedTicketStudentId, setSelectedTicketStudentId] = useState<number | null>(null);
+ const ticketsSectionRef = useRef<HTMLElement | null>(null);
+
+const openStudentTickets = () => {
+  setShowTickets(true);
+
+  window.setTimeout(() => {
+    ticketsSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, 50);
+};
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const utils = trpc.useUtils();
 
   const classesQuery = trpc.portal.teacherClasses.useQuery(undefined, {
+    enabled: !!user && user.role === "teacher",
+  });
+
+  const teacherStudentsQuery = trpc.portal.teacherStudents.useQuery(undefined, {
     enabled: !!user && user.role === "teacher",
   });
 
@@ -92,6 +111,28 @@ const answerQuestionMutation = trpc.portal.answerQuestion.useMutation({
 
   const teacherClasses = classesQuery.data ?? [];
   const materials = materialsQuery.data ?? [];
+  const teacherStudents = teacherStudentsQuery.data ?? [];
+  const uniqueTeacherStudents = Array.from(
+    new Map(teacherStudents.map((student) => [student.id, student])).values(),
+  );
+  const openQuestions = (teacherQuestionsQuery.data ?? []).filter(
+    (question) => question.status !== "answered",
+  );
+  const selectedStudent = uniqueTeacherStudents.find(
+    (student) => student.id === selectedTicketStudentId,
+  ) ?? null;
+  const selectedStudentQuestions = (teacherQuestionsQuery.data ?? []).filter(
+    (question) => question.studentId === selectedTicketStudentId,
+  );
+
+  useEffect(() => {
+    if (selectedTicketStudentId === null && uniqueTeacherStudents.length > 0) {
+      const firstWithOpenQuestion = uniqueTeacherStudents.find((student) =>
+        openQuestions.some((question) => question.studentId === student.id),
+      );
+      setSelectedTicketStudentId(firstWithOpenQuestion?.id ?? uniqueTeacherStudents[0].id);
+    }
+  }, [selectedTicketStudentId, uniqueTeacherStudents.length, openQuestions.length]);
 
   const filteredMaterials = materials.filter((material) => {
     const search = materialSearch.trim().toLowerCase();
@@ -370,6 +411,19 @@ const answerQuestionMutation = trpc.portal.answerQuestion.useMutation({
           <p className="text-slate-500 mt-1">
             Manage your classes, materials, assignments and students.
           </p>
+          <button
+            type="button"
+            onClick={openStudentTickets}
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+          >
+            <MessageCircle size={17} />
+            Student Tickets
+            {openQuestions.length > 0 && (
+              <span className="grid h-5 min-w-5 place-items-center rounded-full bg-white/20 px-1.5 text-[11px]">
+                {openQuestions.length}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* Stats */}
@@ -380,11 +434,13 @@ const answerQuestionMutation = trpc.portal.answerQuestion.useMutation({
             value={String(teacherClasses.length)}
           />
 
-          <StatCard
-            icon={<Users size={22} />}
-            title="Students"
-            value="0"
-          />
+          <button type="button" onClick={openStudentTickets} className="text-left">
+            <StatCard
+              icon={<Users size={22} />}
+              title="Students"
+              value={String(uniqueTeacherStudents.length)}
+            />
+          </button>
 
           <StatCard
             icon={<ClipboardList size={22} />}
@@ -607,6 +663,104 @@ const answerQuestionMutation = trpc.portal.answerQuestion.useMutation({
           </button>
         </section>
 
+                    {showTickets && (
+          <section ref={ticketsSectionRef} id="student-tickets" className="mt-10 rounded-2xl border bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900">Student Tickets</h3>
+                <p className="mt-1 text-sm text-slate-500">Students assigned to your classes are grouped here. A red glowing dot means they have an open query.</p>
+              </div>
+              <span className="rounded-full bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700">
+                {uniqueTeacherStudents.length} students · {openQuestions.length} open
+              </span>
+            </div>
+
+            {teacherStudentsQuery.isLoading || teacherQuestionsQuery.isLoading ? (
+              <div className="mt-6 rounded-xl bg-slate-50 p-6 text-sm text-slate-500">Loading students and tickets...</div>
+            ) : uniqueTeacherStudents.length === 0 ? (
+              <div className="mt-6 rounded-xl bg-slate-50 p-8 text-center">
+                <Users className="mx-auto text-slate-300" size={34} />
+                <p className="mt-3 font-medium text-slate-900">No students assigned yet</p>
+                <p className="mt-1 text-sm text-slate-500">An administrator can enroll students into your classes.</p>
+              </div>
+            ) : (
+              <div className="mt-6 grid gap-5 lg:grid-cols-[290px_1fr]">
+                <div className="rounded-xl border bg-slate-50 p-3">
+                  <p className="px-2 pb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">Students</p>
+                  <div className="max-h-[560px] space-y-1 overflow-y-auto">
+                    {teacherClasses.map((classItem) => {
+                      const classStudents = uniqueTeacherStudents.filter((student) => student.classId === classItem.id);
+                      if (!classStudents.length) return null;
+                      return (
+                        <div key={classItem.id} className="mb-3">
+                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-600">{classItem.subjectCode} · {classItem.name}</div>
+                          {classStudents.map((student) => {
+                            const hasOpen = openQuestions.some((question) => question.studentId === student.id);
+                            const questionCount = (teacherQuestionsQuery.data ?? []).filter((question) => question.studentId === student.id).length;
+                            return (
+                              <button key={`${classItem.id}-${student.id}`} type="button" onClick={() => setSelectedTicketStudentId(student.id)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition ${selectedTicketStudentId === student.id ? "bg-white shadow-sm ring-1 ring-blue-100" : "hover:bg-white"}`}>
+                                <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
+                                  {(student.name || "S").split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}
+                                  {hasOpen && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-red-500 shadow-[0_0_9px_rgba(239,68,68,.95)]" />}
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-semibold text-slate-900">{student.name || "Student"}</span>
+                                  <span className="block truncate text-[11px] text-slate-500">{student.email || "No email"}</span>
+                                </span>
+                                {questionCount > 0 && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">{questionCount}</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="min-w-0 rounded-xl border bg-white p-5">
+                  {selectedStudent ? (
+                    <>
+                      <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-[11px] font-bold uppercase tracking-wider text-blue-600">Selected student</p>
+                          <h4 className="mt-1 text-xl font-semibold text-slate-900">{selectedStudent.name || "Student"}</h4>
+                          <p className="mt-1 text-xs text-slate-500">{selectedStudent.email || "No email"}</p>
+                        </div>
+                        {selectedStudentQuestions.some((question) => question.status !== "answered") ? (
+                          <span className="inline-flex items-center gap-2 rounded-full bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700"><span className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,.95)]" />Query needs attention</span>
+                        ) : (
+                          <span className="rounded-full bg-green-50 px-3 py-1.5 text-xs font-bold text-green-700">All tickets answered</span>
+                        )}
+                      </div>
+
+                      {selectedStudentQuestions.length === 0 ? (
+                        <div className="py-12 text-center text-sm text-slate-500">No tickets from this student.</div>
+                      ) : (
+                        <div className="mt-5 space-y-5">
+                          {selectedStudentQuestions.map((question) => (
+                            <div key={question.id} className="rounded-xl border bg-slate-50 p-5">
+                              <div className="flex items-center justify-between gap-3">
+                                <div><span className="text-xs font-bold text-blue-600">{question.subjectCode}</span><span className="ml-2 text-xs text-slate-500">{question.className}</span></div>
+                                <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${question.status === "answered" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>{question.status === "answered" ? "Answered" : "Open"}</span>
+                              </div>
+                              <div className="mt-4 rounded-xl border bg-white p-4"><p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{question.message}</p>{question.studentFileName && <button type="button" onClick={() => window.open(`/api/questions/${question.id}/student-file/view`, "_blank", "noopener,noreferrer")} className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-blue-600 hover:underline"><Paperclip size={14} />{question.studentFileName}</button>}</div>
+                              {question.status === "answered" ? (
+                                <div className="mt-4 rounded-xl border border-green-100 bg-green-50 p-4"><p className="text-xs font-bold uppercase tracking-wider text-green-700">Your response</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-green-900">{question.teacherResponse}</p>{question.teacherFileName && <a href={`/api/questions/${question.id}/teacher-file/view`} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-green-700 hover:underline"><Paperclip size={14} />{question.teacherFileName}</a>}</div>
+                              ) : (
+                                <div className="mt-4 rounded-xl border bg-white p-4"><label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Solve ticket</label><textarea id={`answer-${question.id}`} rows={4} placeholder="Write your response to the student..." className="mt-2 w-full resize-none rounded-xl border px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500" /><input ref={(element) => { answerFileInputRefs.current[question.id] = element; }} type="file" accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.zip" className="hidden" onChange={(event) => handleAnswerFileChange(question.id, event)} />{answerFiles[question.id] && <div className="mt-3 flex items-center justify-between rounded-xl border bg-slate-50 p-3"><span className="truncate text-xs font-semibold text-slate-700">{answerFiles[question.id]?.name}</span><button type="button" onClick={() => { setAnswerFiles((current) => ({ ...current, [question.id]: null })); const input = answerFileInputRefs.current[question.id]; if (input) input.value = ""; }} className="text-xs font-semibold text-red-600">Remove</button></div>}<div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => answerFileInputRefs.current[question.id]?.click()} className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"><Paperclip size={14} />Attach file</button><button type="button" disabled={answerQuestionMutation.isPending} onClick={() => { const textarea = document.getElementById(`answer-${question.id}`) as HTMLTextAreaElement | null; void sendTeacherAnswer(question.id, textarea?.value ?? ""); }} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60">{answerQuestionMutation.isPending ? <><Loader2 size={14} className="animate-spin" />Sending...</> : "Send Answer"}</button></div></div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : <div className="py-12 text-center text-sm text-slate-500">Select a student to view their tickets.</div>}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
         {/* Uploaded Materials */}
         <section>
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-5">
@@ -620,278 +774,7 @@ const answerQuestionMutation = trpc.portal.answerQuestion.useMutation({
               </p>
             </div>
  
-                    {/* Student Questions */}
-        <section className="mt-10">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h3 className="text-xl font-semibold text-slate-900">
-                Student Questions
-              </h3>
-              <p className="text-sm text-slate-500 mt-1">
-                Questions sent to you by your students.
-              </p>
-            </div>
 
-            {teacherQuestionsQuery.data &&
-              teacherQuestionsQuery.data.length > 0 && (
-                <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-sm font-medium">
-                  {teacherQuestionsQuery.data.length} question
-                  {teacherQuestionsQuery.data.length === 1 ? "" : "s"}
-                </span>
-              )}
-          </div>
-
-          {teacherQuestionsQuery.isLoading ? (
-            <div className="bg-white border rounded-2xl p-6">
-              <p className="text-slate-500">
-                Loading student questions...
-              </p>
-            </div>
-          ) : teacherQuestionsQuery.isError ? (
-            <div className="bg-white border border-red-200 rounded-2xl p-6">
-              <p className="font-medium text-red-700">
-                Could not load student questions.
-              </p>
-              <p className="text-sm text-red-500 mt-1">
-                {teacherQuestionsQuery.error.message}
-              </p>
-            </div>
-          ) : teacherQuestionsQuery.data?.length === 0 ? (
-            <div className="bg-white border rounded-2xl p-8 text-center">
-              <ClipboardList
-                size={36}
-                className="mx-auto text-slate-300"
-              />
-
-              <p className="font-medium text-slate-900 mt-3">
-                No student questions yet
-              </p>
-
-              <p className="text-sm text-slate-500 mt-1">
-                Questions from your students will appear here.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-5">
-              {teacherQuestionsQuery.data?.map((question) => (
-                <div
-                  key={question.id}
-                  className="bg-white border rounded-2xl p-6"
-                >
-                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium text-blue-600">
-                        {question.subjectCode}
-                      </p>
-
-                      <h4 className="text-lg font-semibold text-slate-900 mt-1">
-                        {question.subjectName}
-                      </h4>
-
-                      <p className="text-sm text-slate-500 mt-1">
-                        Class: {question.className}
-                      </p>
-                    </div>
-
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        question.status === "answered"
-                          ? "bg-green-50 text-green-700"
-                          : "bg-amber-50 text-amber-700"
-                      }`}
-                    >
-                      {question.status === "answered"
-                        ? "Answered"
-                        : "Open"}
-                    </span>
-                  </div>
-
-                  <div className="mt-5 pt-5 border-t">
-                    <p className="text-sm font-medium text-slate-700">
-                      {question.studentName || "Student"}
-                    </p>
-
-                    {question.studentEmail && (
-                      <p className="text-xs text-slate-500 mt-1">
-                        {question.studentEmail}
-                      </p>
-                    )}
-
-                    <div className="mt-4 rounded-xl bg-slate-50 border p-4">
-                      <p className="text-sm text-slate-700 whitespace-pre-wrap">
-                        {question.message}
-                      </p>
-                    </div>
-                  </div>
-
-                  {question.studentFileName && (
-                    <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border p-4">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-900 truncate">
-                          {question.studentFileName}
-                        </p>
-
-                        <p className="text-xs text-slate-500 mt-1">
-                          {formatFileSize(question.studentFileSize ?? 0)}
-                        </p>
-                      </div>
-
-                      <div className="flex gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            window.open(
-                              `/api/questions/${question.id}/student-file/view`,
-                              "_blank",
-                              "noopener,noreferrer",
-                            )
-                          }
-                          className="px-3 py-2 rounded-lg border hover:bg-slate-50"
-                        >
-                          <ExternalLink size={16} />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const link = document.createElement("a");
-                            link.href = `/api/questions/${question.id}/student-file/download`;
-                            link.download = question.studentFileName || "attachment";
-                            document.body.appendChild(link);
-                            link.click();
-                            document.body.removeChild(link);
-                          }}
-                          className="px-3 py-2 rounded-lg border hover:bg-slate-50"
-                        >
-                          <Download size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {question.status === "answered" ? (
-                    <div className="mt-5 rounded-xl bg-green-50 border border-green-100 p-4">
-                      <p className="text-sm font-medium text-green-800">
-                        Your response
-                      </p>
-
-                      <p className="text-sm text-green-900 mt-2 whitespace-pre-wrap">
-                        {question.teacherResponse}
-                      </p>
-
-                      {question.teacherFileName && (
-                        <a
-                          href={`/api/questions/${question.id}/teacher-file/view`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-green-700 hover:underline"
-                        >
-                          <Paperclip size={15} />
-                          {question.teacherFileName}
-                        </a>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="mt-5">
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Your answer
-                      </label>
-
-                      <textarea
-                        id={`answer-${question.id}`}
-                        rows={4}
-                        placeholder="Write your answer to the student..."
-                        className="w-full border rounded-xl px-4 py-3 outline-none resize-none focus:ring-2 focus:ring-blue-500"
-                      />
-
-                      <input
-                        ref={(element) => {
-                          answerFileInputRefs.current[question.id] = element;
-                        }}
-                        type="file"
-                        accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.zip"
-                        className="hidden"
-                        onChange={(event) =>
-                          handleAnswerFileChange(question.id, event)
-                        }
-                      />
-
-                      {answerFiles[question.id] && (
-                        <div className="mt-3 flex items-center justify-between rounded-xl border bg-slate-50 p-3">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <Paperclip size={16} className="shrink-0 text-blue-600" />
-                            <span className="truncate text-sm text-slate-700">
-                              {answerFiles[question.id]?.name}
-                            </span>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setAnswerFiles((current) => ({
-                                ...current,
-                                [question.id]: null,
-                              }));
-
-                              const input =
-                                answerFileInputRefs.current[question.id];
-
-                              if (input) input.value = "";
-                            }}
-                            className="text-xs font-semibold text-red-600"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      )}
-
-                      <div className="mt-3 flex flex-wrap gap-3">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            answerFileInputRefs.current[question.id]?.click()
-                          }
-                          className="flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                        >
-                          <Paperclip size={16} />
-                          Attach file or image
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={answerQuestionMutation.isPending}
-                          onClick={() => {
-                            const textarea = document.getElementById(
-                              `answer-${question.id}`,
-                            ) as HTMLTextAreaElement | null;
-
-                            void sendTeacherAnswer(
-                              question.id,
-                              textarea?.value ?? "",
-                            );
-                          }}
-                          className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-                        >
-                          {answerQuestionMutation.isPending ? (
-                            <>
-                              <Loader2
-                                size={17}
-                                className="animate-spin"
-                              />
-                              Sending...
-                            </>
-                          ) : (
-                            "Send Answer"
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
             <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
               <input
                 type="text"

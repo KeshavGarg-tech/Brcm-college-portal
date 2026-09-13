@@ -430,29 +430,29 @@ function StudentOverview({
         </div>
       </div>
 
-      <div className="mt-10 grid gap-5 xl:grid-cols-[1.08fr_.92fr]">
-        <div className="relative min-h-[340px] overflow-hidden rounded-[28px] bg-[#7798D7] p-7 text-white md:p-9">
+      <div className="mt-10 grid gap-5 xl:grid-cols-[.9fr_1fr_1fr]">
+        <div className="relative min-h-[260px] overflow-hidden rounded-[28px] bg-[#7798D7] p-6 text-white md:p-7">
           <div className="absolute right-[-10%] top-[-35%] h-[410px] w-[410px] rounded-full border border-white/20" />
 
-          <div className="absolute right-[-4%] top-[-12%] font-display text-[220px] font-bold leading-none text-white/10">
+          <div className="absolute right-[-5%] top-[-16%] font-display text-[170px] font-bold leading-none text-white/10">
             ◉
           </div>
 
-          <div className="relative flex items-start justify-between gap-5">
+          <div className="relative flex items-start justify-between gap-3">
             <div>
               <div className="text-[10px] font-bold uppercase tracking-[.24em] text-white/60">
                 Your current class
               </div>
 
-              <h2 className="mt-3 max-w-sm font-display text-4xl font-semibold leading-[.9] tracking-[-.055em]">
+              <h2 className="mt-3 max-w-[68%] font-display text-3xl font-semibold leading-[.92] tracking-[-.055em]">
                 {selectedClass.subjectName}
                 <br />
                 with {teacherName.split(" ").slice(-1)[0]}.
               </h2>
             </div>
 
-            <div className="rounded-2xl border border-white/25 bg-white/15 px-3 py-2 text-center backdrop-blur">
-              <div className="font-display text-2xl font-bold">
+            <div className="shrink-0 rounded-xl border border-white/25 bg-white/15 px-3 py-2 text-center backdrop-blur">
+              <div className="whitespace-nowrap font-display text-xl font-bold">
                 {selectedClass.subjectCode}
               </div>
               <div className="text-[9px] font-bold uppercase tracking-widest text-white/60">
@@ -461,16 +461,16 @@ function StudentOverview({
             </div>
           </div>
 
-          <p className="relative mt-7 max-w-sm text-sm leading-6 text-white/70">
+          <p className="relative mt-5 max-w-sm text-xs leading-5 text-white/70">
             {selectedClass.description ||
               `${selectedClass.subjectName} for ${selectedClass.name}.`}
           </p>
 
-          <p className="relative mt-4 text-xs font-semibold text-white/60">
+          <p className="relative mt-3 text-[11px] font-semibold text-white/60">
             Teacher · {teacherName}
           </p>
 
-          <div className="relative mt-6 flex items-center gap-3">
+          <div className="relative mt-5 flex items-center gap-3">
             <button
               onClick={() => setActive("My subjects")}
               className="rounded-full bg-white px-4 py-2.5 text-xs font-bold text-[#7798D7]"
@@ -615,81 +615,67 @@ function StudentOverview({
                 Your teacher's response will appear below.
               </p>
 
-              <div className="mt-8">
-                <h3 className="text-sm font-bold text-[#252827]">
-                  Your questions
-                </h3>
-
-                {studentQuestionsQuery.isLoading ? (
-                  <p className="mt-3 text-xs text-[#99938A]">
-                    Loading your questions...
-                  </p>
-                ) : studentQuestionsQuery.data?.length ? (
-                  <div className="mt-4 space-y-4">
-                    {studentQuestionsQuery.data.map((question) => (
-                      <div
-                        key={question.id}
-                        className="rounded-2xl border border-[#EAE4DB] bg-white p-4"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#7798D7]">
-                            {question.subjectCode}
-                          </span>
-
-                          <span className="rounded-full bg-[#EAF2E9] px-2.5 py-1 text-[10px] font-bold text-[#487052]">
-                            {question.status}
-                          </span>
-                        </div>
-
-                        <p className="mt-3 whitespace-pre-wrap text-sm text-[#4D514F]">
-                          {question.message}
-                        </p>
-
-                        {question.studentFileName && (
-                          <a
-                            href={`/api/questions/${question.id}/student-file/view`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-[#7798D7] hover:underline"
-                          >
-                            <Paperclip className="h-3.5 w-3.5" />
-                            {question.studentFileName}
-                          </a>
-                        )}
-
-                        {question.teacherResponse && (
-                          <div className="mt-4 rounded-xl bg-[#EAF2E9] p-4">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-[#487052]">
-                              Teacher response
-                            </p>
-
-                            <p className="mt-2 whitespace-pre-wrap text-sm text-[#3C5B45]">
-                              {question.teacherResponse}
-                            </p>
-
-                            {question.teacherFileName && (
-                              <a
-                                href={`/api/questions/${question.id}/teacher-file/view`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-[#487052] hover:underline"
-                              >
-                                <Paperclip className="h-3.5 w-3.5" />
-                                {question.teacherFileName}
-                              </a>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-3 text-xs text-[#99938A]">
-                    Your sent questions and teacher responses will appear here.
-                  </p>
-                )}
-              </div>
             </>
+          )}
+        </div>
+
+        <div className="rounded-[28px] border border-[#EAE4DB] bg-white p-6 md:p-7">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="eyebrow">Tickets</div>
+              <h3 className="mt-2 font-display text-2xl font-semibold tracking-[-.04em]">
+                Teacher responses
+              </h3>
+            </div>
+            <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#EAF2E9] text-[#487052]">
+              <MessageCircle className="h-5 w-5" />
+            </div>
+          </div>
+
+          <p className="mt-2 text-xs leading-5 text-[#AAA49B]">
+            Your questions and the replies from your teachers live here.
+          </p>
+
+          {studentQuestionsQuery.isLoading ? (
+            <p className="mt-6 text-xs text-[#99938A]">Loading tickets...</p>
+          ) : studentQuestionsQuery.data?.length ? (
+            <div className="mt-5 max-h-[390px] space-y-3 overflow-y-auto pr-1">
+              {studentQuestionsQuery.data.map((question) => (
+                <div key={question.id} className="rounded-2xl border border-[#EAE4DB] bg-[#FDFBF7] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#7798D7]">
+                      {question.subjectCode}
+                    </span>
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${question.status === "answered" ? "bg-[#EAF2E9] text-[#487052]" : "bg-[#FFF0EA] text-[#C65B49]"}`}>
+                      {question.status === "answered" ? "Answered" : "Open"}
+                    </span>
+                  </div>
+                  <p className="mt-3 whitespace-pre-wrap text-sm text-[#4D514F]">
+                    {question.message}
+                  </p>
+                  {question.teacherResponse ? (
+                    <div className="mt-3 rounded-xl bg-[#EAF2E9] p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#487052]">Teacher response</p>
+                      <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-[#3C5B45]">{question.teacherResponse}</p>
+                      {question.teacherFileName && (
+                        <a href={`/api/questions/${question.id}/teacher-file/view`} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-2 text-[11px] font-semibold text-[#487052] hover:underline">
+                          <Paperclip className="h-3 w-3" />
+                          {question.teacherFileName}
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-[11px] font-semibold text-[#B1ACA4]">Waiting for teacher response</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-6 rounded-2xl bg-[#F8F5EF] p-5 text-center">
+              <MessageCircle className="mx-auto h-5 w-5 text-[#B1ACA4]" />
+              <p className="mt-2 text-xs font-semibold text-[#6D6962]">No tickets yet</p>
+              <p className="mt-1 text-[11px] leading-5 text-[#99938A]">Questions and teacher responses will appear here.</p>
+            </div>
           )}
         </div>
       </div>

@@ -185,6 +185,27 @@ export async function getTeacherClasses(teacherId: number) {
     .orderBy(classes.name);
 }
 
+export async function getTeacherStudents(teacherId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  return db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      classId: classes.id,
+      className: classes.name,
+      subjectCode: subjects.code,
+    })
+    .from(classEnrollments)
+    .innerJoin(users, eq(classEnrollments.studentId, users.id))
+    .innerJoin(classes, eq(classEnrollments.classId, classes.id))
+    .innerJoin(subjects, eq(classes.subjectId, subjects.id))
+    .where(eq(classes.teacherId, teacherId))
+    .orderBy(classes.name, users.name);
+}
+
 /* ─────────────────────────────────────────────
    MATERIALS
 ───────────────────────────────────────────── */
