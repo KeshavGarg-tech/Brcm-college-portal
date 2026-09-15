@@ -288,6 +288,145 @@ export type InsertQuestion = typeof questions.$inferInsert;
 
 
 /* =========================================================
+   ASSIGNMENT DISCUSSION / Q&A
+   ========================================================= */
+
+export const assignmentQuestions = mysqlTable("assignment_questions", {
+  id: int("id").autoincrement().primaryKey(),
+
+  assignmentId: int("assignmentId")
+    .notNull()
+    .references(() => assignments.id, { onDelete: "cascade" }),
+
+  studentId: int("studentId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+
+  message: text("message").notNull(),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AssignmentQuestion = typeof assignmentQuestions.$inferSelect;
+export type InsertAssignmentQuestion = typeof assignmentQuestions.$inferInsert;
+
+
+/* =========================================================
+   ASSIGNMENT DISCUSSION REPLIES
+   ========================================================= */
+
+export const assignmentReplies = mysqlTable("assignment_replies", {
+  id: int("id").autoincrement().primaryKey(),
+
+  questionId: int("questionId")
+    .notNull()
+    .references(() => assignmentQuestions.id, { onDelete: "cascade" }),
+
+  authorId: int("authorId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+
+  message: text("message").notNull(),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AssignmentReply = typeof assignmentReplies.$inferSelect;
+export type InsertAssignmentReply = typeof assignmentReplies.$inferInsert;
+
+
+/* =========================================================
+   ATTENDANCE
+   ========================================================= */
+
+export const attendanceSessions = mysqlTable("attendance_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+
+  classId: int("classId")
+    .notNull()
+    .references(() => classes.id, { onDelete: "cascade" }),
+
+  teacherId: int("teacherId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+
+  sessionDate: timestamp("sessionDate").notNull(),
+
+  topic: varchar("topic", { length: 255 }),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AttendanceSession = typeof attendanceSessions.$inferSelect;
+export type InsertAttendanceSession = typeof attendanceSessions.$inferInsert;
+
+
+/* =========================================================
+   ATTENDANCE RECORDS
+   ========================================================= */
+
+export const attendanceRecords = mysqlTable(
+  "attendance_records",
+  {
+    id: int("id").autoincrement().primaryKey(),
+
+    sessionId: int("sessionId")
+      .notNull()
+      .references(() => attendanceSessions.id, { onDelete: "cascade" }),
+
+    studentId: int("studentId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+
+    status: mysqlEnum("status", [
+      "present",
+      "absent",
+      "late",
+    ])
+      .default("present")
+      .notNull(),
+
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    uniqueAttendance: unique().on(table.sessionId, table.studentId),
+  }),
+);
+
+export type AttendanceRecord = typeof attendanceRecords.$inferSelect;
+export type InsertAttendanceRecord = typeof attendanceRecords.$inferInsert;
+
+
+/* =========================================================
+   ATTENDANCE SETTINGS
+   ========================================================= */
+
+export const attendanceSettings = mysqlTable("attendance_settings", {
+  id: int("id").autoincrement().primaryKey(),
+
+  classId: int("classId")
+    .notNull()
+    .references(() => classes.id, { onDelete: "cascade" })
+    .unique(),
+
+  minimumPercentage: int("minimumPercentage")
+    .default(75)
+    .notNull(),
+
+  updatedBy: int("updatedBy")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+
+export type AttendanceSetting = typeof attendanceSettings.$inferSelect;
+export type InsertAttendanceSetting = typeof attendanceSettings.$inferInsert;
+
+
+/* =========================================================
    ANNOUNCEMENTS
    ========================================================= */
 

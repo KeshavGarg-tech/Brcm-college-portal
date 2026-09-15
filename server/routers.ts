@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -22,6 +23,10 @@ import {
   getTeacherMaterials,
   getStudentAssignments,
   getTeacherAssignments,
+    createTeacherAssignment,
+    getAssignmentById,
+    updateAssignmentPublication,
+    deleteTeacherAssignment,
   getStudentSubmissions,
   getAssignmentSubmissions,
   getStudentAnnouncements,
@@ -42,8 +47,21 @@ getStudents,
 getClassStudents,
 enrollStudent,
 removeStudentFromClass,
+  getAssignmentQuestions,
+  createAssignmentQuestion,
+  createAssignmentReply,
+  getAssignmentQuestionById,
+  getTeacherAttendanceClasses,
+  getTeacherAttendance,
+  createAttendanceSession,
+  getStudentAttendance,
+  getAttendanceSettings,
+  setAttendanceMinimum,
+  getSubmission,
+  createOrUpdateSubmission,
+  getAssignmentForStudent,
 } from "./db";
-import { users, materials, questions, classes, classEnrollments } from "../drizzle/schema";
+import { users, materials, questions, classes, classEnrollments, assignments, submissions } from "../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 import { eq, and } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -57,6 +75,8 @@ import {
   deleteMaterialFile,
   saveQuestionFile,
   deleteQuestionFile,
+  saveSubmissionFile,
+  deleteSubmissionFile,
 } from "./localStorage";
 
 export const appRouter = router({
@@ -1500,6 +1520,128 @@ removeStudent: adminProcedure
     /**
      * Assignments created by the current teacher.
      */
+
+    createAssignment: protectedProcedure
+      .input(
+        z.object({
+          title: z.string().trim().min(1).max(255),
+          description: z.string().max(10000).optional(),
+          classId: z.number().int().positive(),
+          dueDate: z.string().optional(),
+          attachmentName: z.string().max(255).optional(),
+          attachmentUrl: z.string().max(1000).optional(),
+          attachmentKey: z.string().max(500).optional(),
+          isPublished: z.boolean().optional(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "teacher" && ctx.user.role !== "admin") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Teacher access required",
+          });
+        }
+
+        const dueDate = input.dueDate
+          ? new Date(input.dueDate)
+          : null;
+
+        if (dueDate && Number.isNaN(dueDate.getTime())) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Invalid due date",
+          });
+        }
+
+        return createTeacherAssignment({
+          title: input.title,
+          description: input.description,
+          classId: input.classId,
+          createdBy: ctx.user.id,
+          dueDate,
+          attachmentName: input.attachmentName,
+          attachmentUrl: input.attachmentUrl,
+          attachmentKey: input.attachmentKey,
+          isPublished: input.isPublished ?? false,
+        });
+      }),
+
+    publishAssignment: protectedProcedure
+      .input(
+        z.object({
+          assignmentId: z.number().int().positive(),
+          isPublished: z.boolean(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "teacher" && ctx.user.role !== "admin") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Teacher access required",
+          });
+        }
+
+        const assignment = await getAssignmentById(input.assignmentId);
+
+        if (!assignment) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Assignment not found",
+          });
+        }
+
+        if (
+          ctx.user.role === "teacher" &&
+          assignment.createdBy !== ctx.user.id
+        ) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You can only manage your own assignments",
+          });
+        }
+
+        return updateAssignmentPublication(
+          input.assignmentId,
+          input.isPublished,
+        );
+      }),
+
+    deleteAssignment: protectedProcedure
+      .input(
+        z.object({
+          assignmentId: z.number().int().positive(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "teacher" && ctx.user.role !== "admin") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Teacher access required",
+          });
+        }
+
+        const assignment = await getAssignmentById(input.assignmentId);
+
+        if (!assignment) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Assignment not found",
+          });
+        }
+
+        if (
+          ctx.user.role === "teacher" &&
+          assignment.createdBy !== ctx.user.id
+        ) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You can only delete your own assignments",
+          });
+        }
+
+        return deleteTeacherAssignment(input.assignmentId);
+      }),
+
     teacherAssignments: protectedProcedure.query(async ({ ctx }) => {
       if (ctx.user.role !== "teacher" && ctx.user.role !== "admin") {
         throw new TRPCError({
@@ -1514,6 +1656,94 @@ removeStudent: adminProcedure
     /**
      * Submissions belonging to the current student.
      */
+    submitAssignment: protectedProcedure
+      .input(
+        z.object({
+          assignmentId: z.number().int().positive(),
+          fileName: z.string().max(255).optional(),
+          fileData: z.string().optional(),
+          comment: z.string().max(5000).optional(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "student" && ctx.user.role !== "admin") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Student access required",
+          });
+        }
+
+        if (ctx.user.role === "student") {
+          const assignment = await getAssignmentForStudent(
+            input.assignmentId,
+            ctx.user.id,
+          );
+
+          if (!assignment) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "You are not enrolled in this assignment's class",
+            });
+          }
+        }
+
+        let fileName: string | null = null;
+        let fileUrl: string | null = null;
+        let storageKey: string | null = null;
+
+        if (input.fileData && input.fileName) {
+          let fileBuffer: Buffer;
+
+          try {
+            fileBuffer = Buffer.from(input.fileData, "base64");
+          } catch {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Invalid file data",
+            });
+          }
+
+          if (fileBuffer.length > 10 * 1024 * 1024) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Submission file must be 10 MB or smaller",
+            });
+          }
+
+          const saved = await saveSubmissionFile(
+            input.fileName,
+            fileBuffer,
+          );
+
+          fileName = input.fileName;
+          fileUrl = saved.fileUrl;
+          storageKey = saved.storageKey;
+        }
+
+        const existing = await getSubmission(
+          input.assignmentId,
+          ctx.user.id,
+        );
+
+        const result = await createOrUpdateSubmission({
+          assignmentId: input.assignmentId,
+          studentId: ctx.user.id,
+          fileName,
+          fileUrl,
+          storageKey,
+          comment: input.comment,
+        });
+
+        if (existing?.storageKey && existing.storageKey !== storageKey) {
+          await deleteSubmissionFile(existing.storageKey);
+        }
+
+        return {
+          success: true,
+          submission: result,
+        };
+      }),
+
     studentSubmissions: protectedProcedure.query(async ({ ctx }) => {
       if (ctx.user.role !== "student" && ctx.user.role !== "admin") {
         throw new TRPCError({
@@ -1558,6 +1788,380 @@ removeStudent: adminProcedure
           ctx.user.id
         );
       }),
+
+    /* =========================================================
+       BATCH 1 — ASSIGNMENT Q&A
+       ========================================================= */
+
+    assignmentQuestions: protectedProcedure
+      .input((value: unknown) => {
+        if (
+          typeof value !== "object" ||
+          value === null ||
+          !("assignmentId" in value) ||
+          typeof value.assignmentId !== "number" ||
+          !Number.isInteger(value.assignmentId) ||
+          value.assignmentId <= 0
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Valid assignmentId is required",
+          });
+        }
+
+        return { assignmentId: value.assignmentId };
+      })
+      .query(async ({ ctx, input }) => {
+        if (
+          ctx.user.role !== "student" &&
+          ctx.user.role !== "teacher" &&
+          ctx.user.role !== "admin"
+        ) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Portal access required",
+          });
+        }
+
+        return getAssignmentQuestions(input.assignmentId);
+      }),
+
+    askAssignmentQuestion: protectedProcedure
+      .input((value: unknown) => {
+        if (typeof value !== "object" || value === null) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Question data is required",
+          });
+        }
+
+        const data = value as Record<string, unknown>;
+        const assignmentId = Number(data.assignmentId);
+        const message = data.message;
+
+        if (
+          !Number.isInteger(assignmentId) ||
+          assignmentId <= 0
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Valid assignmentId is required",
+          });
+        }
+
+        if (
+          typeof message !== "string" ||
+          message.trim().length < 2 ||
+          message.trim().length > 5000
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Question must contain 2-5000 characters",
+          });
+        }
+
+        return {
+          assignmentId,
+          message: message.trim(),
+        };
+      })
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "student") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Students only",
+          });
+        }
+
+        return createAssignmentQuestion({
+          assignmentId: input.assignmentId,
+          studentId: ctx.user.id,
+          message: input.message,
+        });
+      }),
+
+    replyToAssignmentQuestion: protectedProcedure
+      .input((value: unknown) => {
+        if (typeof value !== "object" || value === null) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Reply data is required",
+          });
+        }
+
+        const data = value as Record<string, unknown>;
+        const questionId = Number(data.questionId);
+        const message = data.message;
+
+        if (!Number.isInteger(questionId) || questionId <= 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Valid questionId is required",
+          });
+        }
+
+        if (
+          typeof message !== "string" ||
+          message.trim().length < 1 ||
+          message.trim().length > 5000
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Reply must contain 1-5000 characters",
+          });
+        }
+
+        return {
+          questionId,
+          message: message.trim(),
+        };
+      })
+      .mutation(async ({ ctx, input }) => {
+        if (
+          ctx.user.role !== "student" &&
+          ctx.user.role !== "teacher" &&
+          ctx.user.role !== "admin"
+        ) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Portal access required",
+          });
+        }
+
+        const question = await getAssignmentQuestionById(
+          input.questionId,
+        );
+
+        if (!question) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Question not found",
+          });
+        }
+
+        return createAssignmentReply({
+          questionId: input.questionId,
+          authorId: ctx.user.id,
+          message: input.message,
+        });
+      }),
+
+    /* =========================================================
+       BATCH 1 — ATTENDANCE
+       ========================================================= */
+
+    teacherAttendanceClasses: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "teacher" && ctx.user.role !== "admin") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Teacher access required",
+        });
+      }
+
+      return getTeacherAttendanceClasses(ctx.user.id);
+    }),
+
+    teacherAttendance: protectedProcedure
+      .input((value: unknown) => {
+        if (
+          typeof value !== "object" ||
+          value === null ||
+          !("classId" in value) ||
+          typeof value.classId !== "number" ||
+          !Number.isInteger(value.classId) ||
+          value.classId <= 0
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Valid classId is required",
+          });
+        }
+
+        return { classId: value.classId };
+      })
+      .query(async ({ ctx, input }) => {
+        if (ctx.user.role !== "teacher" && ctx.user.role !== "admin") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Teacher access required",
+          });
+        }
+
+        return getTeacherAttendance(ctx.user.id, input.classId);
+      }),
+
+    createAttendance: protectedProcedure
+      .input((value: unknown) => {
+        if (typeof value !== "object" || value === null) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Attendance data is required",
+          });
+        }
+
+        const data = value as Record<string, unknown>;
+        const classId = Number(data.classId);
+        const sessionDate = new Date(String(data.sessionDate));
+
+        if (!Number.isInteger(classId) || classId <= 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Valid classId is required",
+          });
+        }
+
+        if (Number.isNaN(sessionDate.getTime())) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Valid sessionDate is required",
+          });
+        }
+
+        if (!Array.isArray(data.records) || data.records.length === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Attendance records are required",
+          });
+        }
+
+        const records = data.records.map((record) => {
+          if (!record || typeof record !== "object") {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Invalid attendance record",
+            });
+          }
+
+          const row = record as Record<string, unknown>;
+          const studentId = Number(row.studentId);
+          const status = String(row.status);
+
+          if (
+            !Number.isInteger(studentId) ||
+            studentId <= 0 ||
+            !["present", "absent", "late"].includes(status)
+          ) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Invalid attendance record",
+            });
+          }
+
+          return {
+            studentId,
+            status: status as "present" | "absent" | "late",
+          };
+        });
+
+        return {
+          classId,
+          sessionDate,
+          topic:
+            typeof data.topic === "string"
+              ? data.topic.trim()
+              : undefined,
+          records,
+        };
+      })
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "teacher" && ctx.user.role !== "admin") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Teacher access required",
+          });
+        }
+
+        return createAttendanceSession({
+          ...input,
+          teacherId: ctx.user.id,
+        });
+      }),
+
+    attendanceSettings: protectedProcedure
+      .input((value: unknown) => {
+        if (
+          typeof value !== "object" ||
+          value === null ||
+          !("classId" in value) ||
+          typeof value.classId !== "number" ||
+          !Number.isInteger(value.classId) ||
+          value.classId <= 0
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Valid classId is required",
+          });
+        }
+
+        return { classId: value.classId };
+      })
+      .query(async ({ ctx, input }) => {
+        if (ctx.user.role !== "teacher" && ctx.user.role !== "admin") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Teacher access required",
+          });
+        }
+
+        return getAttendanceSettings(input.classId);
+      }),
+
+    setAttendanceMinimum: protectedProcedure
+      .input((value: unknown) => {
+        if (typeof value !== "object" || value === null) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Attendance setting is required",
+          });
+        }
+
+        const data = value as Record<string, unknown>;
+        const classId = Number(data.classId);
+        const minimumPercentage = Number(data.minimumPercentage);
+
+        if (
+          !Number.isInteger(classId) ||
+          classId <= 0 ||
+          !Number.isInteger(minimumPercentage) ||
+          minimumPercentage < 1 ||
+          minimumPercentage > 100
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Minimum attendance must be between 1 and 100",
+          });
+        }
+
+        return {
+          classId,
+          minimumPercentage,
+        };
+      })
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "teacher" && ctx.user.role !== "admin") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Teacher access required",
+          });
+        }
+
+        return setAttendanceMinimum(
+          input.classId,
+          input.minimumPercentage,
+          ctx.user.id,
+        );
+      }),
+
+    studentAttendance: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "student" && ctx.user.role !== "admin") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Student access required",
+        });
+      }
+
+      return getStudentAttendance(ctx.user.id);
+    }),
 
     /**
      * Announcements visible to the current student.

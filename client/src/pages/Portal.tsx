@@ -1,9 +1,10 @@
+import SmartDeadlineTracker from "../components/SmartDeadlineTracker";
 import { useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowUpRight, Bell, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Download, FileText, LayoutDashboard, LogOut, MessageCircle, Paperclip, Plus, Send, Sparkles, Upload, UserRound, Users } from "lucide-react";
+import { ArrowUpRight, Bell, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock, Download, FileText, LayoutDashboard, LogOut, MessageCircle, Paperclip, Plus, Send, Sparkles, Upload, UserRound, Users, AlertCircle, CheckCircle2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -292,6 +293,16 @@ function StudentOverview({
   const studentQuestionsQuery = trpc.portal.studentQuestions.useQuery(undefined, {
     enabled: true,
   });
+
+  const studentAssignmentsQuery = trpc.portal.studentAssignments.useQuery(
+    undefined,
+    { enabled: true },
+  );
+
+  const studentAttendanceQuery = trpc.portal.studentAttendance.useQuery(
+    undefined,
+    { enabled: true },
+  );
 
   const selectedClass =
     classes.length > 0
@@ -680,6 +691,243 @@ function StudentOverview({
         </div>
       </div>
 
+      {/* =====================================================
+          BATCH 1 — DEADLINES + ATTENDANCE
+          ===================================================== */}
+
+      <div className="mt-8 grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
+
+        {/* Smart deadline tracker */}
+        <SmartDeadlineTracker
+          assignments={studentAssignmentsQuery.data ?? []}
+          onOpen={() => setActive("Assignments")}
+        />
+
+        {/* Attendance */}
+        <div className="rounded-[28px] border border-[#EAE4DB] bg-white p-6 md:p-7">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="eyebrow">Attendance</div>
+              <h2 className="mt-2 font-display text-2xl font-semibold tracking-[-.04em]">
+                Stay above the limit.
+              </h2>
+              <p className="mt-2 text-xs leading-5 text-[#99938A]">
+                Default minimum attendance is 75%.
+              </p>
+            </div>
+
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#EAF2E9] text-[#487052]">
+              <Check className="h-5 w-5" />
+            </div>
+          </div>
+
+          {studentAttendanceQuery.isLoading ? (
+            <div className="mt-7 rounded-2xl bg-[#F8F5EF] p-5 text-xs text-[#99938A]">
+              Loading attendance...
+            </div>
+          ) : (
+            (() => {
+              const attendance = studentAttendanceQuery.data?.subjects ?? [];
+
+              if (!attendance.length) {
+                return (
+                  <div className="mt-7 rounded-2xl bg-[#F8F5EF] p-5">
+                    <p className="text-sm font-bold text-[#5F5A53]">
+                      No attendance recorded yet.
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-[#99938A]">
+                      Your attendance will appear here after your teacher
+                      records a class session.
+                    </p>
+                  </div>
+                );
+              }
+
+              const overallTotal = attendance.reduce(
+                (sum, item) => sum + item.total,
+                0,
+              );
+
+              const overallPresent = attendance.reduce(
+                (sum, item) => sum + item.present,
+                0,
+              );
+
+              const overallPercentage =
+                overallTotal > 0
+                  ? Math.round((overallPresent / overallTotal) * 100)
+                  : 0;
+
+              const overallMinimum =
+                attendance.length > 0
+                  ? Math.min(
+                      ...attendance.map(
+                        (item) => item.minimumPercentage ?? 75,
+                      ),
+                    )
+                  : 75;
+
+              const overallStatus =
+                overallTotal === 0
+                  ? "safe"
+                  : overallPercentage >= overallMinimum + 5
+                    ? "safe"
+                    : overallPercentage >= overallMinimum
+                      ? "warning"
+                      : "critical";
+
+              const statusStyles = {
+                safe: {
+                  badge: "bg-[#EAF2E9] text-[#487052]",
+                  bar: "bg-[#7DAE92]",
+                  label: "Safe",
+                },
+                warning: {
+                  badge: "bg-[#FFF4D5] text-[#9B7832]",
+                  bar: "bg-[#D5A943]",
+                  label: "Near limit",
+                },
+                critical: {
+                  badge: "bg-[#FFF0EA] text-[#C65B49]",
+                  bar: "bg-[#FF674F]",
+                  label: "Below limit",
+                },
+              } as const;
+
+              const overallStyle = statusStyles[overallStatus];
+
+              return (
+                <>
+                  <div className="mt-6 rounded-2xl bg-[#F8F5EF] p-5">
+                    <div className="flex items-end justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#AAA49B]">
+                          Overall
+                        </p>
+                        <p className="mt-1 font-display text-4xl font-semibold tracking-[-.05em] text-[#252827]">
+                          {overallPercentage}%
+                        </p>
+                      </div>
+
+                      <span
+                        className={`rounded-full px-3 py-1.5 text-[10px] font-bold ${overallStyle.badge}`}
+                      >
+                        {overallStyle.label}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#E5DED3]">
+                      <div
+                        className={`h-full rounded-full transition-all ${overallStyle.bar}`}
+                        style={{
+                          width: `${Math.min(100, overallPercentage)}%`,
+                        }}
+                      />
+                    </div>
+
+                    <p className="mt-3 text-[11px] leading-5 text-[#77736D]">
+                      {overallPercentage < overallMinimum
+                        ? `You need to attend ${Math.max(
+                            0,
+                            Math.ceil(
+                              (overallMinimum * overallTotal -
+                                100 * overallPresent) /
+                                (100 - overallMinimum),
+                            ),
+                          )} more consecutive classes to recover to ${overallMinimum}%.`
+                        : `You can miss up to ${Math.max(
+                            0,
+                            Math.floor(
+                              (100 * overallPresent -
+                                overallMinimum * overallTotal) /
+                                overallMinimum,
+                            ),
+                          )} class${
+                            Math.floor(
+                              (100 * overallPresent -
+                                overallMinimum * overallTotal) /
+                                overallMinimum,
+                            ) === 1
+                              ? ""
+                              : "es"
+                          } while staying at ${overallMinimum}%.`}
+                    </p>
+                  </div>
+
+                  <div className="mt-5 space-y-3">
+                    {attendance.slice(0, 4).map((item) => {
+                      const percentage = item.percentage ?? 0;
+                      const status =
+                        item.status === "critical"
+                          ? statusStyles.critical
+                          : item.status === "warning"
+                            ? statusStyles.warning
+                            : statusStyles.safe;
+
+                      return (
+                        <div
+                          key={item.classId}
+                          className="rounded-2xl border border-[#EEE8DF] bg-[#FDFBF7] p-4"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-bold text-[#454640]">
+                                {item.subjectName}
+                              </p>
+                              <p className="mt-1 text-[10px] text-[#AAA49B]">
+                                {item.present}/{item.total} classes
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-[9px] font-bold ${status.badge}`}
+                              >
+                                {status.label}
+                              </span>
+                              <span className="font-display text-lg font-bold text-[#353733]">
+                                {percentage}%
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#E5DED3]">
+                            <div
+                              className={`h-full rounded-full ${status.bar}`}
+                              style={{
+                                width: `${Math.min(100, percentage)}%`,
+                              }}
+                            />
+                          </div>
+
+                          {item.status !== "safe" && (
+                            <p className="mt-2 text-[10px] font-semibold text-[#77736D]">
+                              {item.status === "critical"
+                                ? `Attend ${item.classesNeeded} more class${
+                                    item.classesNeeded === 1 ? "" : "es"
+                                  } to reach ${item.minimumPercentage}%.`
+                                : `You can miss ${item.canMiss} more class${
+                                    item.canMiss === 1 ? "" : "es"
+                                  } before reaching the warning zone.`}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {attendance.length > 4 && (
+                    <p className="mt-4 text-center text-[10px] font-semibold text-[#AAA49B]">
+                      Showing your first 4 subjects
+                    </p>
+                  )}
+                </>
+              );
+            })()
+          )}
+        </div>
+      </div>
+
       <ResourceList
         resources={resources}
         onDownload={(resource) => {
@@ -698,6 +946,407 @@ function StudentOverview({
           );
         }}
       />
+    </div>
+  );
+}
+
+
+function StudentAssignments() {
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [comment, setComment] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+
+  const assignmentsQuery = trpc.portal.studentAssignments.useQuery();
+  const submissionsQuery = trpc.portal.studentSubmissions.useQuery();
+
+  const questionsQuery = trpc.portal.assignmentQuestions.useQuery(
+    { assignmentId: selectedId ?? 0 },
+    { enabled: selectedId !== null },
+  );
+
+  const submitMutation = trpc.portal.submitAssignment.useMutation({
+    onSuccess: () => {
+      toast.success("Assignment submitted successfully.");
+      setFile(null);
+      setComment("");
+      submissionsQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const askMutation = trpc.portal.askAssignmentQuestion.useMutation({
+    onSuccess: () => {
+      toast.success("Question posted.");
+      questionsQuery.refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const replyMutation = trpc.portal.replyToAssignmentQuestion.useMutation({
+    onSuccess: () => {
+      toast.success("Reply posted.");
+      questionsQuery.refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const [questionText, setQuestionText] = useState("");
+  const [replyText, setReplyText] = useState("");
+
+  const assignments = assignmentsQuery.data ?? [];
+  const submissions = submissionsQuery.data ?? [];
+
+  const selected = assignments.find((item) => item.id === selectedId) ?? null;
+
+  const selectedSubmission = selected
+    ? submissions.find((item) => item.assignmentId === selected.id)
+    : null;
+
+  const getUrgency = (dueDate: string | Date | null) => {
+    if (!dueDate) return "No deadline";
+
+    const due = new Date(dueDate).getTime();
+    const now = Date.now();
+    const diff = due - now;
+    const hours = diff / (1000 * 60 * 60);
+
+    if (diff < 0) return "Overdue";
+    if (hours <= 24) return "Due today";
+    if (hours <= 72) return "Due soon";
+    return "Upcoming";
+  };
+
+  const sorted = [...assignments].sort((a, b) => {
+    const aTime = a.dueDate
+      ? new Date(a.dueDate).getTime()
+      : Number.MAX_SAFE_INTEGER;
+    const bTime = b.dueDate
+      ? new Date(b.dueDate).getTime()
+      : Number.MAX_SAFE_INTEGER;
+
+    return aTime - bTime;
+  });
+
+  const submit = async () => {
+    if (!selected) return;
+
+    if (!file && !selectedSubmission) {
+      toast.error("Please choose a file to submit.");
+      return;
+    }
+
+    let fileData: string | undefined;
+
+    if (file) {
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+
+      let binary = "";
+      const chunkSize = 0x8000;
+
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode(
+          ...Array.from(bytes.subarray(i, i + chunkSize)),
+        );
+      }
+
+      fileData = btoa(binary);
+    }
+
+    submitMutation.mutate({
+      assignmentId: selected.id,
+      fileName: file?.name,
+      fileData,
+      comment,
+    });
+  };
+
+  const askQuestion = () => {
+    if (!selected || !questionText.trim()) return;
+
+    askMutation.mutate({
+      assignmentId: selected.id,
+      message: questionText.trim(),
+    });
+
+    setQuestionText("");
+  };
+
+  const reply = (questionId: number) => {
+    if (!replyText.trim()) return;
+
+    replyMutation.mutate({
+      questionId,
+      message: replyText.trim(),
+    });
+
+    setReplyText("");
+  };
+
+  if (selected) {
+    const urgency = getUrgency(selected.dueDate);
+
+    return (
+      <div className="space-y-6">
+        <Button
+          variant="ghost"
+          className="px-0"
+          onClick={() => setSelectedId(null)}
+        >
+          ← Back to assignments
+        </Button>
+
+        <div className="rounded-3xl border bg-white p-6 shadow-sm dark:bg-slate-900">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-slate-500">
+                Assignment
+              </p>
+              <h2 className="mt-1 text-2xl font-bold">
+                {selected.title}
+              </h2>
+            </div>
+
+            <span
+              className={`rounded-full px-3 py-1 text-sm font-semibold ${
+                urgency === "Overdue"
+                  ? "bg-red-100 text-red-700"
+                  : urgency === "Due today"
+                    ? "bg-orange-100 text-orange-700"
+                    : urgency === "Due soon"
+                      ? "bg-yellow-100 text-yellow-700"
+                      : "bg-green-100 text-green-700"
+              }`}
+            >
+              {urgency}
+            </span>
+          </div>
+
+          <div className="mt-6 whitespace-pre-wrap text-slate-600 dark:text-slate-300">
+            {selected.description || "No description provided."}
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-4 text-sm text-slate-500">
+            <span className="flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              {selected.dueDate
+                ? new Date(selected.dueDate).toLocaleString()
+                : "No deadline"}
+            </span>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border bg-white p-6 shadow-sm dark:bg-slate-900">
+          <h3 className="text-lg font-bold">Your submission</h3>
+
+          {selectedSubmission ? (
+            <div className="mt-4 flex items-center gap-3 rounded-2xl bg-green-50 p-4 text-green-800">
+              <CheckCircle2 className="h-5 w-5" />
+              <div>
+                <p className="font-semibold">Submitted</p>
+                <p className="text-sm">
+                  {selectedSubmission.fileName || "No file attached"}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 flex items-center gap-3 rounded-2xl bg-yellow-50 p-4 text-yellow-800">
+              <AlertCircle className="h-5 w-5" />
+              <p className="font-medium">Not submitted yet</p>
+            </div>
+          )}
+
+          <div className="mt-5 space-y-4">
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium">
+                Submission file
+              </span>
+              <input
+                type="file"
+                onChange={(event) =>
+                  setFile(event.target.files?.[0] ?? null)
+                }
+                className="block w-full rounded-xl border p-3 text-sm"
+              />
+            </label>
+
+            <Textarea
+              value={comment}
+              onChange={(event) => setComment(event.target.value)}
+              placeholder="Add a note with your submission..."
+              rows={4}
+            />
+
+            <Button
+              onClick={submit}
+              disabled={submitMutation.isPending}
+              className="gap-2"
+            >
+              <Upload className="h-4 w-4" />
+              {submitMutation.isPending
+                ? "Submitting..."
+                : selectedSubmission
+                  ? "Resubmit assignment"
+                  : "Submit assignment"}
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border bg-white p-6 shadow-sm dark:bg-slate-900">
+          <div>
+            <h3 className="text-lg font-bold">
+              Questions & Answers
+            </h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Ask questions about this assignment and discuss them with
+              teachers or classmates.
+            </p>
+          </div>
+
+          <div className="mt-5 flex gap-2">
+            <Textarea
+              value={questionText}
+              onChange={(event) => setQuestionText(event.target.value)}
+              placeholder="Ask a question..."
+              rows={2}
+            />
+            <Button
+              onClick={askQuestion}
+              disabled={askMutation.isPending}
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="mt-6 space-y-5">
+            {(questionsQuery.data ?? []).map((question) => (
+              <div
+                key={question.id}
+                className="rounded-2xl border p-4"
+              >
+                <p className="font-medium">{question.message}</p>
+
+                <div className="mt-3 space-y-2">
+                  {(question.replies ?? []).map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-xl bg-slate-50 p-3 text-sm"
+                    >
+                      {item.message}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-3 flex gap-2">
+                  <Textarea
+                    value={replyText}
+                    onChange={(event) =>
+                      setReplyText(event.target.value)
+                    }
+                    placeholder="Reply..."
+                    rows={1}
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => reply(question.id)}
+                    disabled={replyMutation.isPending}
+                  >
+                    Reply
+                  </Button>
+                </div>
+              </div>
+            ))}
+
+            {questionsQuery.data?.length === 0 && (
+              <p className="text-sm text-slate-500">
+                No questions yet. Be the first to ask.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold">Assignments</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Your assignments are automatically sorted by deadline.
+        </p>
+      </div>
+
+      {sorted.length === 0 ? (
+        <div className="rounded-3xl border bg-white p-8 text-center shadow-sm dark:bg-slate-900">
+          <Check className="mx-auto h-10 w-10 text-green-500" />
+          <h3 className="mt-3 font-bold">No assignments</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            You're all caught up.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {sorted.map((assignment) => {
+            const urgency = getUrgency(assignment.dueDate);
+            const submission = submissions.find(
+              (item) => item.assignmentId === assignment.id,
+            );
+
+            return (
+              <button
+                key={assignment.id}
+                type="button"
+                onClick={() => setSelectedId(assignment.id)}
+                className="w-full rounded-3xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-900"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold">{assignment.title}</h3>
+                    <p className="mt-1 line-clamp-2 text-sm text-slate-500">
+                      {assignment.description || "No description"}
+                    </p>
+                  </div>
+
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      urgency === "Overdue"
+                        ? "bg-red-100 text-red-700"
+                        : urgency === "Due today"
+                          ? "bg-orange-100 text-orange-700"
+                          : urgency === "Due soon"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-green-100 text-green-700"
+                    }`}
+                  >
+                    {urgency}
+                  </span>
+                </div>
+
+                <div className="mt-4 flex items-center justify-between text-sm">
+                  <span className="text-slate-500">
+                    {assignment.dueDate
+                      ? new Date(assignment.dueDate).toLocaleString()
+                      : "No deadline"}
+                  </span>
+
+                  <span
+                    className={
+                      submission
+                        ? "font-semibold text-green-600"
+                        : "font-semibold text-orange-600"
+                    }
+                  >
+                    {submission ? "Submitted ✓" : "Not submitted"}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1370,6 +2019,10 @@ export default function Portal() {
         />;
       }
 
+      if (active === "Assignments") {
+        return <StudentAssignments />;
+      }
+
       if (active === "Resources") {
         return <StudentResources
           resources={studentResources}
@@ -1400,7 +2053,7 @@ export default function Portal() {
 
   const mobileItems =
     role === "student"
-      ? ["Overview", "My subjects", "Resources"]
+      ? ["Overview", "My subjects", "Assignments", "Resources"]
       : ["Overview", "My classes", "Questions", "Resource library"];
 
   if (loading) {

@@ -12,6 +12,11 @@ import {
   announcements,
   questions,
   passwordResetTokens,
+  assignmentQuestions,
+  assignmentReplies,
+  attendanceSessions,
+  attendanceRecords,
+  attendanceSettings,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -39,6 +44,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   }
 
   const db = await getDb();
+
   if (!db) {
     console.warn("[Database] Cannot upsert user: database not available");
     return;
@@ -299,6 +305,75 @@ export async function getStudentAssignments(studentId: number) {
     .orderBy(desc(assignments.createdAt));
 }
 
+
+export async function createTeacherAssignment(data: {
+  title: string;
+  description?: string | null;
+  classId: number;
+  createdBy: number;
+  dueDate?: Date | null;
+  attachmentName?: string | null;
+  attachmentUrl?: string | null;
+  attachmentKey?: string | null;
+  isPublished?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(assignments).values({
+    title: data.title,
+    description: data.description ?? null,
+    classId: data.classId,
+    createdBy: data.createdBy,
+    dueDate: data.dueDate ?? null,
+    attachmentName: data.attachmentName ?? null,
+    attachmentUrl: data.attachmentUrl ?? null,
+    attachmentKey: data.attachmentKey ?? null,
+    isPublished: data.isPublished ?? false,
+  });
+
+  return getAssignmentById(Number(result[0].insertId));
+}
+
+export async function getAssignmentById(assignmentId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  const rows = await db
+    .select()
+    .from(assignments)
+    .where(eq(assignments.id, assignmentId))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+export async function updateAssignmentPublication(
+  assignmentId: number,
+  isPublished: boolean,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  await db
+    .update(assignments)
+    .set({ isPublished })
+    .where(eq(assignments.id, assignmentId));
+
+  return getAssignmentById(assignmentId);
+}
+
+export async function deleteTeacherAssignment(assignmentId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  await db
+    .delete(assignments)
+    .where(eq(assignments.id, assignmentId));
+
+  return { success: true };
+}
+
 export async function getTeacherAssignments(teacherId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -327,6 +402,125 @@ export async function getStudentSubmissions(studentId: number) {
     .from(submissions)
     .where(eq(submissions.studentId, studentId))
     .orderBy(desc(submissions.submittedAt));
+}
+
+
+
+export async function getAssignmentForStudent(
+  assignmentId: number,
+  studentId: number,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  const result = await db
+    .select({
+      id: assignments.id,
+      classId: assignments.classId,
+      isPublished: assignments.isPublished,
+    })
+    .from(assignments)
+    .innerJoin(
+      classEnrollments,
+      eq(classEnrollments.classId, assignments.classId),
+    )
+    .where(
+      and(
+        eq(assignments.id, assignmentId),
+        eq(classEnrollments.studentId, studentId),
+        eq(assignments.isPublished, true),
+      ),
+    )
+    .limit(1);
+
+  return result[0] ?? null;
+}
+
+export async function getSubmission(
+  assignmentId: number,
+  studentId: number,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  const result = await db
+    .select()
+    .from(submissions)
+    .where(
+      and(
+        eq(submissions.assignmentId, assignmentId),
+        eq(submissions.studentId, studentId),
+      ),
+    )
+    .limit(1);
+
+  return result[0] ?? null;
+}
+
+export async function createOrUpdateSubmission(input: {
+  assignmentId: number;
+  studentId: number;
+  fileName?: string | null;
+  fileUrl?: string | null;
+  storageKey?: string | null;
+  comment?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  const existing = await getSubmission(input.assignmentId, input.studentId);
+
+  if (existing) {
+    const result = await db
+      .update(submissions)
+      .set({
+        fileName: input.fileName ?? existing.fileName,
+        fileUrl: input.fileUrl ?? existing.fileUrl,
+        storageKey: input.storageKey ?? existing.storageKey,
+        comment: input.comment ?? null,
+        status: "submitted",
+        submittedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(submissions.id, existing.id));
+
+    return {
+      ...existing,
+      fileName: input.fileName ?? existing.fileName,
+      fileUrl: input.fileUrl ?? existing.fileUrl,
+      storageKey: input.storageKey ?? existing.storageKey,
+      comment: input.comment ?? null,
+      status: "submitted" as const,
+      submittedAt: new Date(),
+      updatedAt: new Date(),
+      result,
+    };
+  }
+
+  const result = await db
+    .insert(submissions)
+    .values({
+      assignmentId: input.assignmentId,
+      studentId: input.studentId,
+      fileName: input.fileName ?? null,
+      fileUrl: input.fileUrl ?? null,
+      storageKey: input.storageKey ?? null,
+      comment: input.comment ?? null,
+      status: "submitted",
+      submittedAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+  return {
+    id: result[0].insertId,
+    assignmentId: input.assignmentId,
+    studentId: input.studentId,
+    fileName: input.fileName ?? null,
+    fileUrl: input.fileUrl ?? null,
+    storageKey: input.storageKey ?? null,
+    comment: input.comment ?? null,
+    status: "submitted" as const,
+  };
 }
 
 export async function getAssignmentSubmissions(
@@ -942,6 +1136,404 @@ export async function getMaterialById(id: number) {
 
   return result[0];
 }
+
+
+
+/* =========================================================
+   ASSIGNMENT DISCUSSION / Q&A
+   ========================================================= */
+
+export async function getAssignmentQuestions(assignmentId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  const rows = await db
+    .select({
+      id: assignmentQuestions.id,
+      assignmentId: assignmentQuestions.assignmentId,
+      studentId: assignmentQuestions.studentId,
+      studentName: users.name,
+      message: assignmentQuestions.message,
+      createdAt: assignmentQuestions.createdAt,
+    })
+    .from(assignmentQuestions)
+    .innerJoin(users, eq(users.id, assignmentQuestions.studentId))
+    .where(eq(assignmentQuestions.assignmentId, assignmentId))
+    .orderBy(assignmentQuestions.createdAt);
+
+  const result = [];
+
+  for (const question of rows) {
+    const replies = await db
+      .select({
+        id: assignmentReplies.id,
+        questionId: assignmentReplies.questionId,
+        authorId: assignmentReplies.authorId,
+        authorName: users.name,
+        authorRole: users.role,
+        message: assignmentReplies.message,
+        createdAt: assignmentReplies.createdAt,
+      })
+      .from(assignmentReplies)
+      .innerJoin(users, eq(users.id, assignmentReplies.authorId))
+      .where(eq(assignmentReplies.questionId, question.id))
+      .orderBy(assignmentReplies.createdAt);
+
+    result.push({
+      ...question,
+      replies,
+    });
+  }
+
+  return result;
+}
+
+export async function createAssignmentQuestion(input: {
+  assignmentId: number;
+  studentId: number;
+  message: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  const [result] = await db.insert(assignmentQuestions).values({
+    assignmentId: input.assignmentId,
+    studentId: input.studentId,
+    message: input.message.trim(),
+  });
+
+  return getAssignmentQuestionById(Number(result.insertId));
+}
+
+export async function getAssignmentQuestionById(questionId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  const [question] = await db
+    .select({
+      id: assignmentQuestions.id,
+      assignmentId: assignmentQuestions.assignmentId,
+      studentId: assignmentQuestions.studentId,
+      studentName: users.name,
+      message: assignmentQuestions.message,
+      createdAt: assignmentQuestions.createdAt,
+    })
+    .from(assignmentQuestions)
+    .innerJoin(users, eq(users.id, assignmentQuestions.studentId))
+    .where(eq(assignmentQuestions.id, questionId))
+    .limit(1);
+
+  return question ?? null;
+}
+
+export async function createAssignmentReply(input: {
+  questionId: number;
+  authorId: number;
+  message: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  const [result] = await db.insert(assignmentReplies).values({
+    questionId: input.questionId,
+    authorId: input.authorId,
+    message: input.message.trim(),
+  });
+
+  const [reply] = await db
+    .select({
+      id: assignmentReplies.id,
+      questionId: assignmentReplies.questionId,
+      authorId: assignmentReplies.authorId,
+      authorName: users.name,
+      authorRole: users.role,
+      message: assignmentReplies.message,
+      createdAt: assignmentReplies.createdAt,
+    })
+    .from(assignmentReplies)
+    .innerJoin(users, eq(users.id, assignmentReplies.authorId))
+    .where(eq(assignmentReplies.id, Number(result.insertId)))
+    .limit(1);
+
+  return reply ?? null;
+}
+
+
+/* =========================================================
+   ATTENDANCE
+   ========================================================= */
+
+export async function getTeacherAttendanceClasses(teacherId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  return db
+    .select({
+      id: classes.id,
+      name: classes.name,
+      subjectId: subjects.id,
+      subjectName: subjects.name,
+      subjectCode: subjects.code,
+    })
+    .from(classes)
+    .innerJoin(subjects, eq(subjects.id, classes.subjectId))
+    .where(eq(classes.teacherId, teacherId))
+    .orderBy(classes.name);
+}
+
+export async function getAttendanceSettings(classId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  const [settings] = await db
+    .select({
+      id: attendanceSettings.id,
+      classId: attendanceSettings.classId,
+      minimumPercentage: attendanceSettings.minimumPercentage,
+    })
+    .from(attendanceSettings)
+    .where(eq(attendanceSettings.classId, classId))
+    .limit(1);
+
+  return settings ?? {
+    id: 0,
+    classId,
+    minimumPercentage: 75,
+  };
+}
+
+export async function setAttendanceMinimum(
+  classId: number,
+  minimumPercentage: number,
+  updatedBy: number,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  const existing = await getAttendanceSettings(classId);
+
+  if (existing.id) {
+    await db
+      .update(attendanceSettings)
+      .set({
+        minimumPercentage,
+        updatedBy,
+      })
+      .where(eq(attendanceSettings.id, existing.id));
+  } else {
+    await db.insert(attendanceSettings).values({
+      classId,
+      minimumPercentage,
+      updatedBy,
+    });
+  }
+
+  return getAttendanceSettings(classId);
+}
+
+export async function createAttendanceSession(input: {
+  classId: number;
+  teacherId: number;
+  sessionDate: Date;
+  topic?: string;
+  records: Array<{
+    studentId: number;
+    status: "present" | "absent" | "late";
+  }>;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  const [session] = await db.insert(attendanceSessions).values({
+    classId: input.classId,
+    teacherId: input.teacherId,
+    sessionDate: input.sessionDate,
+    topic: input.topic?.trim() || null,
+  });
+
+  const sessionId = Number(session.insertId);
+
+  if (input.records.length > 0) {
+    await db.insert(attendanceRecords).values(
+      input.records.map((record) => ({
+        sessionId,
+        studentId: record.studentId,
+        status: record.status,
+      })),
+    );
+  }
+
+  return {
+    id: sessionId,
+    classId: input.classId,
+    sessionDate: input.sessionDate,
+    topic: input.topic?.trim() || null,
+  };
+}
+
+export async function getTeacherAttendance(
+  teacherId: number,
+  classId: number,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  const sessions = await db
+    .select({
+      id: attendanceSessions.id,
+      classId: attendanceSessions.classId,
+      sessionDate: attendanceSessions.sessionDate,
+      topic: attendanceSessions.topic,
+    })
+    .from(attendanceSessions)
+    .where(
+      and(
+        eq(attendanceSessions.classId, classId),
+        eq(attendanceSessions.teacherId, teacherId),
+      ),
+    )
+    .orderBy(desc(attendanceSessions.sessionDate));
+
+  const students = await getClassStudents(classId);
+
+  const records = await db
+    .select({
+      sessionId: attendanceRecords.sessionId,
+      studentId: attendanceRecords.studentId,
+      status: attendanceRecords.status,
+    })
+    .from(attendanceRecords)
+    .innerJoin(
+      attendanceSessions,
+      eq(attendanceSessions.id, attendanceRecords.sessionId),
+    )
+    .where(
+      and(
+        eq(attendanceSessions.classId, classId),
+        eq(attendanceSessions.teacherId, teacherId),
+      ),
+    );
+
+  return {
+    sessions,
+    students,
+    records,
+    settings: await getAttendanceSettings(classId),
+  };
+}
+
+export async function getStudentAttendance(studentId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  const enrolledClasses = await db
+    .select({
+      classId: classes.id,
+      className: classes.name,
+      subjectId: subjects.id,
+      subjectName: subjects.name,
+      subjectCode: subjects.code,
+    })
+    .from(classEnrollments)
+    .innerJoin(classes, eq(classes.id, classEnrollments.classId))
+    .innerJoin(subjects, eq(subjects.id, classes.subjectId))
+    .where(eq(classEnrollments.studentId, studentId))
+    .orderBy(classes.name);
+
+  const results = [];
+
+  for (const item of enrolledClasses) {
+    const rows = await db
+      .select({
+        status: attendanceRecords.status,
+      })
+      .from(attendanceRecords)
+      .innerJoin(
+        attendanceSessions,
+        eq(attendanceSessions.id, attendanceRecords.sessionId),
+      )
+      .where(
+        and(
+          eq(attendanceRecords.studentId, studentId),
+          eq(attendanceSessions.classId, item.classId),
+        ),
+      );
+
+    const total = rows.length;
+    const present = rows.filter(
+      (row) => row.status === "present" || row.status === "late",
+    ).length;
+    const absent = rows.filter((row) => row.status === "absent").length;
+
+    const percentage =
+      total === 0 ? 0 : Math.round((present / total) * 100);
+
+    const settings = await getAttendanceSettings(item.classId);
+    const minimum = settings.minimumPercentage;
+
+    let status: "safe" | "warning" | "critical";
+
+    if (total === 0 || percentage >= minimum + 5) {
+      status = "safe";
+    } else if (percentage >= minimum) {
+      status = "warning";
+    } else {
+      status = "critical";
+    }
+
+    let canMiss = 0;
+
+    if (total > 0) {
+      while (
+        (present / (total + canMiss + 1)) * 100 >= minimum &&
+        canMiss < 100
+      ) {
+        canMiss++;
+      }
+    }
+
+    let classesNeeded = 0;
+
+    if (total > 0 && percentage < minimum) {
+      let p = present;
+      let t = total;
+
+      while ((p / t) * 100 < minimum && classesNeeded < 1000) {
+        p++;
+        t++;
+        classesNeeded++;
+      }
+    }
+
+    results.push({
+      ...item,
+      total,
+      present,
+      absent,
+      percentage,
+      minimumPercentage: minimum,
+      status,
+      canMiss,
+      classesNeeded,
+    });
+  }
+
+  const totalClasses = results.reduce((sum, item) => sum + item.total, 0);
+  const totalPresent = results.reduce((sum, item) => sum + item.present, 0);
+
+  const overallPercentage =
+    totalClasses === 0
+      ? 0
+      : Math.round((totalPresent / totalClasses) * 100);
+
+  return {
+    subjects: results,
+    overallPercentage,
+    totalClasses,
+    totalPresent,
+  };
+}
+
 
 export async function createPasswordResetToken(input: {
   userId: number;

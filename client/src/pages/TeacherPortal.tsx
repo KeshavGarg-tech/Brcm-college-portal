@@ -8,6 +8,7 @@ import {
   Users,
   Upload,
   LogOut,
+  ArrowRight,
   GraduationCap,
   Download,
   ExternalLink,
@@ -15,9 +16,14 @@ import {
   Loader2,
   Paperclip,
   MessageCircle,
+  CalendarCheck,
+  CheckCircle2,
+  Clock3,
+  XCircle,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
 
 export default function TeacherPortal() {
   const [, setLocation] = useLocation();
@@ -520,6 +526,33 @@ const answerQuestionMutation = trpc.portal.answerQuestion.useMutation({
           </div>
         )}
 
+        {/* Attendance */}
+        <section className="bg-white border rounded-2xl p-6 mb-10">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <CalendarCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Attendance
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Record and manage student attendance
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setLocation("/teacher/attendance")}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition"
+            >
+              Open Attendance
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </section>
+
         {/* Upload Material */}
         <section className="bg-white border rounded-2xl p-6 mb-10">
           <div className="flex items-center gap-3 mb-6">
@@ -1004,6 +1037,7 @@ function formatFileSize(bytes: number) {
 
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
 
 function StatCard({
   icon,

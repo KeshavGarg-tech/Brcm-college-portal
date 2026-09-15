@@ -10,6 +10,10 @@ import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import AdminPortal from "./pages/AdminPortal";
 import TeacherPortal from "./pages/TeacherPortal";
+import TeacherAttendance from "./pages/TeacherAttendance";
+import TeacherTickets from "./pages/TeacherTickets";
+import TeacherClasses from "./pages/TeacherClasses";
+import TeacherAssignments from "./pages/TeacherAssignments";
 import AdminTeachers from "./pages/AdminTeachers";
 import AdminSubjects from "./pages/AdminSubjects";
 import AdminClasses from "./pages/AdminClasses";
@@ -22,6 +26,11 @@ function Router() {
       <Route path="/login" component={Auth} />
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/portal" component={Portal} />
+      <Route path="/teacher/classes" component={TeacherClasses} />
+      <Route path="/teacher/assignments" component={TeacherAssignments} />
+      <Route path="/teacher/attendance" component={TeacherAttendance} />
+      <Route path="/teacher/tickets" component={TeacherTickets} />
+
   <Route path="/teacher" component={TeacherPortal} />
       <Route path="/admin" component={AdminPortal} />
       <Route path="/admin/teachers" component={AdminTeachers} />
